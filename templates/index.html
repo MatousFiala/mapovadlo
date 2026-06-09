@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title></title>
+
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.3/maplibre-gl.min.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.3/maplibre-gl.js"></script>
+
+        <!--<link href="css/style.css" rel="stylesheet">-->
+    </head>
+    <body>
+        <div id="map" style="height: 1024px; width: 1024px;"></div>
+
+        <script>
+            async function fetchFeatures(map) {
+                const b = map.getBounds()
+                const zoom = map.getZoom()
+                const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(6)).join(',')
+
+                try {
+                    const res = await fetch(`/api/features?bbox=${bbox}&granularity=orp&time=2021-01-01&series=pocet-obyvatel&zoom=${zoom}`)
+                    if (!res.ok) throw new Error(res.statusText)
+                    const geojson = await res.json()
+                    map.getSource('features').setData(geojson)
+                } catch (err) {
+                    console.error('Failed to fetch features: ', err)
+                }
+            }
+
+            var map = new maplibregl.Map({
+                container: 'map',
+                style: {
+                    version: 8,
+                    sources: {},
+                    layers: [],
+                },
+                center: [14.44, 50.08],
+                zoom: 6
+            })
+
+            map.on('load', () => {
+
+                map.addControl(new maplibregl.NavigationControl(), 'top-left')
+                map.addControl(new maplibregl.ScaleControl(), 'bottom-left')
+
+                map.addSource('features', {
+                    type: 'geojson',
+                    data: {type: 'FeatureCollection', features: []},
+                    generateId: true
+                })
+                map.addLayer({
+                    id: 'background',
+                    type: 'background',
+                    paint: { 'background-color': '#f8f8f8' },
+                })
+                // Polygon fill
+                map.addLayer({
+                    id: 'features-fill',
+                    type: 'fill',
+                    source: 'features',
+                    filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
+                    paint: {
+                        'fill-color': [
+                            'interpolate', ['linear'], ['get', 'value'],
+                            0,       '#eff3ff',
+                            400000,  '#6baed6',
+                            800000,  '#084594',
+                        ],
+                        'fill-opacity': 1,
+                    },
+                })
+
+                // Polygon outline
+                map.addLayer({
+                    id: 'features-fill-outline',
+                    type: 'line',
+                    source: 'features',
+                    filter: ['==', ['geometry-type'], 'Polygon'],
+                    paint: {
+                        'line-color': '#2563eb',
+                        'line-width': 1.5,
+                    },
+                })
+
+                map.on('moveend', () => fetchFeatures(map))
+                fetchFeatures(map)
+            })
+
+
+
+        </script>
+    </body>
+</html>

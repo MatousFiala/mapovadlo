@@ -5,5 +5,20 @@ sql:
     engine: "postgresql"
     gen:
       go:
+        package: "database"
         out: "internal/database"
+        overrides:
+          - db_type: "geometry"
+            go_type: "github.com/twpayne/go-geom.T "
+          - db_type: "geometry"
+            nullable: true
+            go_type:
+              import: "github.com/twpayne/go-geom"
+              type: "T"
+              pointer: true
+          - db_type: "numeric"
+            nullable: true
+            go_type:
+              type: "float64"
+              pointer: true
 
