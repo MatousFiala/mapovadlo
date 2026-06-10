@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -72,11 +73,11 @@ func (cfg *apiConfig) getFeatures(w http.ResponseWriter, req *http.Request) {
 	if granularity != database.LocationTypeKraj && granularity != database.LocationTypeOrp && granularity != database.LocationTypeObec {
 		respondWithError(w, 400, "Invalid granularity, only kraj, orp and obec supported")
 	}
+	bboxRaw := req.URL.Query().Get("bbox")
 	var bbox Bbox
 	if granularity != database.LocationTypeObec {
 		bbox = Bbox{XMin: 12, YMin: 48, XMax: 19, YMax: 52}
 	} else {
-		bboxRaw := req.URL.Query().Get("bbox")
 		bbox, err = parseBboxFromString(bboxRaw)
 		if err != nil {
 			respondWithError(w, 400, fmt.Sprintf("Error parsing bbox: %v", err))
@@ -118,6 +119,8 @@ func (cfg *apiConfig) getFeatures(w http.ResponseWriter, req *http.Request) {
 		"type": "FeatureCollection",
 		"features": geojsonFeatures,
 	}
+
+	log.Printf("Got request with params series: %s, time: %v, granularity %s, bbox %s (using %v). Returning %d features\n", series, time, granularity, bboxRaw, bbox, len(geojsonFeatures))
 
 	respondWithJson(w, 200, responseMap)
 }

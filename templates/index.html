@@ -5,90 +5,78 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title></title>
 
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.3/maplibre-gl.min.css" rel="stylesheet">
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.3/maplibre-gl.js"></script>
-
+        <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+        <script src="//unpkg.com/alpinejs" defer></script>
         <!--<link href="css/style.css" rel="stylesheet">-->
     </head>
     <body>
-        <div id="map" style="height: 1024px; width: 1024px;"></div>
+        <div x-data="mapApp()" x-init="init()">
+            <div id="map-container">
+                <svg id="map" width=1024 height=720></svg>
+            </div>
+        </div>
 
         <script>
-            async function fetchFeatures(map) {
-                const b = map.getBounds()
-                const zoom = map.getZoom()
-                const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => v.toFixed(6)).join(',')
+            function mapApp() {
+                return {
+                    data: [],
+                    width: 1024,
+                    height: 720,
+                    async init() {
+                        this.svg = d3.select("#map")
+                        this.g = this.svg.append("g")
+                        
+                        this.zoom = d3.zoom()
+                            .scaleExtent([-12,12])
+                            .on("zoom", (event) => this.g.attr('transform', event.transform));
+                        this.svg.call(this.zoom);
 
-                try {
-                    const res = await fetch(`/api/features?bbox=${bbox}&granularity=orp&time=2021-01-01&series=pocet-obyvatel&zoom=${zoom}`)
-                    if (!res.ok) throw new Error(res.statusText)
-                    const geojson = await res.json()
-                    map.getSource('features').setData(geojson)
-                } catch (err) {
-                    console.error('Failed to fetch features: ', err)
+                        await this.fetchData();
+                        this.drawMap();
+                    },
+                    async fetchData() {
+                        const res = await fetch("/api/features?bbox=12,48,19,59&granularity=orp&series=pocet-obyvatel&time=2021-01-01&zoom=8")
+                        this.data = await res.json()
+                        console.log(`data has ${this.data.features.length} features`)
+                    },
+                    drawMap() {
+                        this.projection = d3.geoMercator().fitSize([this.width, this.height], this.data)
+                        this.path = d3.geoPath().projection(this.projection)
+                        this.g.selectAll("path")
+                            .data(this.data.features)
+                            .join("path")
+                            .attr("d", this.path)
+                            .attr("fill", d => this.colourByData(d))
+                            .attr("stroke", "black")
+                            .on("click", (event, d) => this.clickFunction(event, d));
+                    },
+                    colourByData(feature) {
+                        const scale = d3.scaleSequential(d3.interpolateBlues).domain([0,2500000])
+                        return feature.properties.value ? scale(feature.properties.value) : "#999"
+                    },
+                    clickFunction(event, d) {
+                        console.log(`Clicked on element ${d.properties.id}`)
+                        const [[x0, y0],[x1,y1]] = this.path.bounds(d);
+                        event.stopPropagation();
+                        this.svg.transition().duration(750).call(
+                            this.zoom.transform,
+                            d3.zoomIdentity
+                            .translate(this.width/2, this.height/2)
+                            .scale(Math.min(8, 0.9 / Math.max((x1 - x0) / this.width, (y1 - y0) / this.height)))
+                            .translate(-(x0 + x1) / 2, -(y0 + y1) / 2),
+                            d3.pointer(event, this.svg.node())
+                        );
+                    },
+                    function resetZoom() {
+                        this.svg.transition().duration(750).call(
+                            this.zoom.transform,
+                            d3.zoomIdentity,
+                            d3.zoomTransform(this.svg.node()).invert([this.width / 2, this.height / 2])
+                        );
+                    }
+
                 }
             }
-
-            var map = new maplibregl.Map({
-                container: 'map',
-                style: {
-                    version: 8,
-                    sources: {},
-                    layers: [],
-                },
-                center: [14.44, 50.08],
-                zoom: 6
-            })
-
-            map.on('load', () => {
-
-                map.addControl(new maplibregl.NavigationControl(), 'top-left')
-                map.addControl(new maplibregl.ScaleControl(), 'bottom-left')
-
-                map.addSource('features', {
-                    type: 'geojson',
-                    data: {type: 'FeatureCollection', features: []},
-                    generateId: true
-                })
-                map.addLayer({
-                    id: 'background',
-                    type: 'background',
-                    paint: { 'background-color': '#f8f8f8' },
-                })
-                // Polygon fill
-                map.addLayer({
-                    id: 'features-fill',
-                    type: 'fill',
-                    source: 'features',
-                    filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
-                    paint: {
-                        'fill-color': [
-                            'interpolate', ['linear'], ['get', 'value'],
-                            0,       '#eff3ff',
-                            400000,  '#6baed6',
-                            800000,  '#084594',
-                        ],
-                        'fill-opacity': 1,
-                    },
-                })
-
-                // Polygon outline
-                map.addLayer({
-                    id: 'features-fill-outline',
-                    type: 'line',
-                    source: 'features',
-                    filter: ['==', ['geometry-type'], 'Polygon'],
-                    paint: {
-                        'line-color': '#2563eb',
-                        'line-width': 1.5,
-                    },
-                })
-
-                map.on('moveend', () => fetchFeatures(map))
-                fetchFeatures(map)
-            })
-
-
 
         </script>
     </body>
